@@ -119,9 +119,11 @@ export class CustomerHealthScorer {
     return health;
   }
 
-  static async getAtRiskUsers(riskLevel: "high" | "medium" = "high", limit: number = 50): Promise<any[]> {
+  static async getAtRiskUsers(riskLevel?: "high" | "medium", limit: number = 50): Promise<any[]> {
     return prisma.customerHealth.findMany({
-      where: { churnRisk: riskLevel },
+      where: {
+        ...(riskLevel ? { churnRisk: riskLevel } : { churnRisk: { in: ["medium", "high"] } }),
+      },
       orderBy: { healthScore: "asc" },
       take: limit,
     });

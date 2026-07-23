@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (action === "at-risk") {
-      const riskLevel = searchParams.get("risk") as "high" | "medium" | undefined;
+      const riskLevelParam = searchParams.get("risk");
+      const riskLevel = riskLevelParam === "high" || riskLevelParam === "medium" ? riskLevelParam : undefined;
       const limit = parseInt(searchParams.get("limit") ?? "50");
       const users = await CustomerHealthScorer.getAtRiskUsers(riskLevel, limit);
       return NextResponse.json({ data: users });
