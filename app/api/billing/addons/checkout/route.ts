@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe/config";
 import { getCustomerId } from "@/lib/stripe/helpers";
 import { sanitizeError, AppError, parseBody } from "@/lib/utils/api-errors";
+import { getBaseUrl } from "@/lib/utils";
 import { rateLimit } from "@/lib/utils/rate-limit";
 import { CouponEngine } from "@/lib/billing/coupons";
 import { z } from "zod";
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
     }
 
     const stripe = getStripe();
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const baseUrl = getBaseUrl();
 
     const sessionParams: Record<string, unknown> = {
       customer: customerId,

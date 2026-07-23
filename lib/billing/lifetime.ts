@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { CreditManager } from "./credits";
 import { getStripe } from "@/lib/stripe/config";
+import { getBaseUrl } from "@/lib/utils";
 
 export class LifetimeDealManager {
   static async listAvailable(): Promise<any[]> {
@@ -24,8 +25,8 @@ export class LifetimeDealManager {
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{ price: plan.stripePriceId, quantity: 1 }],
-        success_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?lifetime=success`,
-        cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?lifetime=cancelled`,
+        success_url: `${getBaseUrl()}/billing?lifetime=success`,
+        cancel_url: `${getBaseUrl()}/billing?lifetime=cancelled`,
         metadata: { user_id: userId, lifetime_plan_id: planId, type: "lifetime_deal" },
       });
       return { sessionUrl: session.url ?? undefined };
@@ -54,12 +55,16 @@ export class LifetimeDealManager {
 }
 
 export async function activateDeal(userId: string, plan: any): Promise<void> {
-  await prisma.userLifetimeDeals.create({
-    data: {
+  await prisma.userLifetimeDeals.upsert({
+    where: { userId_lifetimePlanId: { userId, lifetimePlanId: plan.id } },
+    create: {
       userId,
       lifetimePlanId: plan.id,
       status: "ACTIVE",
       metadata: {} as any,
+    },
+    update: {
+      status: "ACTIVE",
     },
   });
 

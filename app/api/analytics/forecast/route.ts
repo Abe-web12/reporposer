@@ -5,13 +5,14 @@ import { requireAnalyticsAccess, getOrganizationId } from "@/lib/analytics/auth"
 import { PredictionEngine } from "@/lib/analytics/predictions";
 import { predictionSchema } from "@/lib/validations/analytics";
 import { queryHandler } from "@/lib/api/shared-middleware";
+import { AppError } from "@/lib/utils/api-errors";
 
 export const GET = queryHandler({
   rateLimit: { windowMs: 60_000, maxRequests: 30 },
   name: "analytics.forecast.list",
   handler: async (request, ctx) => {
     const orgId = ctx.orgId;
-    if (!orgId) throw new Error("No organization found");
+    if (!orgId) throw new AppError("No organization found", 404);
     await requireAnalyticsAccess(orgId);
 
     const { searchParams } = new URL(request.url);

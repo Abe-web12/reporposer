@@ -22,7 +22,7 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-let _priceIds: { starter: string; pro: string } | null = null;
+let _priceIds: { starter: string; pro: string; business: string; enterprise: string } | null = null;
 let _plansMap: Record<string, { key: string; name: string; generationsLimit: number }> | null = null;
 
 function ensurePriceIds() {
@@ -30,6 +30,8 @@ function ensurePriceIds() {
     _priceIds = {
       starter: getRequiredEnv("STRIPE_STARTER_PRICE_ID"),
       pro: getRequiredEnv("STRIPE_PRO_PRICE_ID"),
+      business: process.env.STRIPE_BUSINESS_PRICE_ID || "",
+      enterprise: process.env.STRIPE_ENTERPRISE_PRICE_ID || "",
     };
   }
   return _priceIds;
@@ -42,6 +44,12 @@ function ensurePlansMap() {
       [ids.starter]: { key: "starter", name: "Starter", generationsLimit: 30 },
       [ids.pro]: { key: "pro", name: "Pro", generationsLimit: -1 },
     };
+    if (ids.business) {
+      _plansMap[ids.business] = { key: "business", name: "Business", generationsLimit: -1 };
+    }
+    if (ids.enterprise) {
+      _plansMap[ids.enterprise] = { key: "enterprise", name: "Enterprise", generationsLimit: -1 };
+    }
   }
   return _plansMap;
 }

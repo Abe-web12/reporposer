@@ -5,12 +5,11 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { generateSchema } from "@/lib/validations/generate";
 import { generateContentStream } from "@/lib/ai/generate";
-import { canGenerate, PLANS } from "@/lib/constants/plans";
+import { canGenerate } from "@/lib/constants/plans";
 import { sanitizeError, AppError, parseBody } from "@/lib/utils/api-errors";
 import { rateLimitByUser } from "@/lib/utils/rate-limit";
 import { CreditManager } from "@/lib/billing/credits";
 import { checkRequired, AI_ENV_CHECK } from "@/lib/env-check";
-import type { PlanKey } from "@/lib/constants/plans";
 
 const PROVIDER_TIMEOUT_MS = 60000;
 
@@ -38,6 +37,15 @@ export async function POST(request: NextRequest) {
 
     const dbUser = await prisma.users.findUnique({ where: { id: user.id } });
     if (!dbUser) throw new AppError("Profile not found", 404);
+
+    if (!canGenerate(dbUser.plan as any, dbUser.generationsUsed)) {
+      throw new AppError("Generation limit reached. Upgrade your plan for more.", 403);
+    }
+
+    const creditReserve = await CreditManager.reserveCredits(user.id, 1, `generate:${crypto.randomUUID()}`);
+    if (!creditReserve.success) {
+      throw new AppError("Insufficient credits. Purchase more credits to continue.", 402);
+    }
 
     const body = await parseBody<Record<string, unknown>>(request);
     const validation = generateSchema.safeParse(body);
@@ -87,17 +95,28 @@ export async function POST(request: NextRequest) {
     const readable = new ReadableStream({
       async start(controller) {
         let fullContent = "";
+        let timedOut = false;
+
+        const timer = setTimeout(() => {
+          timedOut = true;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Generation timed out. Please try again." })}\n\n`));
+          try { controller.close(); } catch {}
+        }, PROVIDER_TIMEOUT_MS);
 
         try {
           const stream = await generateContentStream(output_format, content, voice, brandKitContext);
 
           for await (const chunk of stream) {
+            if (timedOut) return;
             const text = chunk.text();
             fullContent += text;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
           }
 
+          clearTimeout(timer);
+
           if (!fullContent) {
+            await CreditManager.releaseReserved(user.id, 1, `generate:empty`);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "No content generated" })}\n\n`));
             return;
           }
@@ -128,6 +147,8 @@ export async function POST(request: NextRequest) {
               },
             });
 
+            await CreditManager.commitReserved(user.id, 1, `generation:${generation.id}`, "AI content generation");
+
             await tx.users.update({
               where: { id: user.id },
               data: { generationsUsed: { increment: 1 } },
@@ -136,23 +157,20 @@ export async function POST(request: NextRequest) {
             return generation;
           });
 
-          await CreditManager.spendCredits(user.id, 1, `generation:${result.id}`, "AI content generation", {
-            model: process.env.AI_MODEL || "gemini-1.5-flash",
-            provider: "morphllm",
-            generationId: result.id,
-          });
-
           controller.enqueue(
             encoder.encode(
               `data: ${JSON.stringify({ done: true, generation_id: result.id })}\n\n`
             )
           );
         } catch (err) {
+          clearTimeout(timer);
+          await CreditManager.releaseReserved(user.id, 1, `generate:error`).catch(() => {});
           const safe = sanitizeError(err);
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ error: safe.error })}\n\n`)
           );
         } finally {
+          clearTimeout(timer);
           try { controller.close(); } catch {}
         }
       },

@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getStripe, STRIPE_WEBHOOK_SECRET, getPlansMap, validateStripeConfig } from "@/lib/stripe/config";
 import { prisma } from "@/lib/prisma";
+import { redis } from "@/lib/redis";
 import { sanitizeError, AppError } from "@/lib/utils/api-errors";
 import { CreditManager } from "@/lib/billing/credits";
 import { activateDeal } from "@/lib/billing/lifetime";
@@ -11,6 +12,8 @@ import { RevenueAnalytics } from "@/lib/billing/revenue";
 import { NotificationService } from "@/lib/notifications";
 import { rateLimit } from "@/lib/utils/rate-limit";
 import type { InvoiceStatus } from "@prisma/client";
+
+const WEBHOOK_TTL = 86400;
 
 const SUBSCRIPTION_STATUS_MAP: Record<string, string | null> = {
   active: "active",
@@ -95,6 +98,12 @@ export async function POST(request: NextRequest) {
     } catch {
       throw new AppError("Invalid signature", 400);
     }
+
+    const alreadyProcessed = await redis.get(`stripe:event:${event.id}`);
+    if (alreadyProcessed) {
+      return NextResponse.json({ received: true, deduplicated: true });
+    }
+    await redis.set(`stripe:event:${event.id}`, "1", { ex: WEBHOOK_TTL });
 
     switch (event.type) {
       case "checkout.session.completed": {

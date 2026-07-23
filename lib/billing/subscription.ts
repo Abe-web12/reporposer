@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getStripe, getPriceIds, getPlansMap } from "@/lib/stripe/config";
+import { getBaseUrl } from "@/lib/utils";
 
 export class SubscriptionManager {
   static async syncFromStripe(userId: string): Promise<void> {
@@ -128,7 +129,7 @@ export class SubscriptionManager {
       await stripe.subscriptions.update(user.stripeSubscriptionId, updateParams);
       await this.syncFromStripe(userId);
     } else {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+      const baseUrl = getBaseUrl();
       const couponCode = couponId ? (await prisma.coupons.findUnique({ where: { id: couponId } }))?.code : undefined;
       const session = await stripe.checkout.sessions.create({
         mode: "subscription",

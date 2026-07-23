@@ -31,6 +31,7 @@ import { auth } from "@clerk/nextjs/server";
 import * as Sentry from "@sentry/nextjs";
 import { prisma } from "@/lib/prisma";
 import { AppError, sanitizeError } from "@/lib/utils/api-errors";
+import { getBaseUrl } from "@/lib/utils";
 import { rateLimit } from "@/lib/utils/rate-limit";
 import { AuditManager } from "@/lib/security/audit";
 import { PolicyManager } from "@/lib/security/policies";
@@ -175,7 +176,7 @@ export function validateCsrf(request: NextRequest): void {
 
   const origin = request.headers.get("origin");
   const referer = request.headers.get("referer");
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"}`;
+  const appUrl = getBaseUrl();
 
   if (!origin && !referer) return;
 

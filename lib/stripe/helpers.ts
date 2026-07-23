@@ -77,15 +77,17 @@ export async function getCustomerId(userId: string, email: string): Promise<stri
     return customer.id;
   }
 
-  const customers = await stripe.customers.list({ email, limit: 1 });
-  if (customers.data.length > 0) {
-    stepLog("getCustomerId", true, `found existing customer: ${customers.data[0].id}`);
-    return customers.data[0].id;
+  const customers = await stripe.customers.list({ email, limit: 10 });
+  const matched = customers.data.find((c) => c.metadata?.user_id === userId);
+  if (matched) {
+    stepLog("getCustomerId", true, `found existing customer: ${matched.id}`);
+    return matched.id;
   }
 
   const customer = await stripe.customers.create({
     email,
     metadata: { user_id: userId },
+    description: `User ${userId}`,
   });
   stepLog("getCustomerId", true, `created customer: ${customer.id}`);
   return customer.id;

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAnalyticsAccess } from "@/lib/analytics/auth";
 import { cacheGet, cacheKey } from "@/lib/utils/cache";
 import { queryHandler } from "@/lib/api/shared-middleware";
+import { AppError } from "@/lib/utils/api-errors";
 import { subDays, startOfDay, format } from "date-fns";
 
 export const GET = queryHandler({
@@ -12,7 +13,7 @@ export const GET = queryHandler({
   name: "analytics.integrations.list",
   handler: async (request, ctx) => {
     const orgId = ctx.orgId;
-    if (!orgId) throw new Error("No organization found");
+    if (!orgId) throw new AppError("No organization found", 404);
     await requireAnalyticsAccess(orgId);
 
     const { searchParams } = new URL(request.url);

@@ -352,7 +352,7 @@ Scheduled posting is configured via `vercel.json`:
 {
   "crons": [
     {
-      "path": "/api/cron/process-posts?secret=abe_12selom_repurpose_cron_secure_key",
+      "path": "/api/cron/process-posts?secret=YOUR_CRON_SECRET",
       "schedule": "0 0 * * *"
     }
   ]

@@ -1,8 +1,9 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { ensureUserSync } from "@/lib/auth/sync";
 import { sanitizeError, AppError } from "@/lib/utils/api-errors";
 import { rateLimitByIp } from "@/lib/utils/rate-limit";
 import { sendWelcomeEmail } from "@/lib/email/sender";
@@ -20,38 +21,25 @@ export async function POST(request: Request) {
       throw new AppError("Unauthorized", 401);
     }
 
-    const client = await clerkClient();
-    const clerkUser = await client.users.getUser(userId);
-    const email = clerkUser.primaryEmailAddress?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress || "";
+    const syncResult = await ensureUserSync(userId);
 
-    const dbUser = await prisma.users.upsert({
+    const dbUser = await prisma.users.findUnique({
       where: { id: userId },
-      update: {
-        email,
-        name: clerkUser.firstName
-          ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim()
-          : null,
-        fullName: clerkUser.firstName
-          ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim()
-          : null,
-        avatarUrl: clerkUser.imageUrl || null,
-      },
-      create: {
-        id: userId,
-        email,
-        passwordHash: "",
-        name: clerkUser.firstName
-          ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim()
-          : null,
-        fullName: clerkUser.firstName
-          ? `${clerkUser.firstName} ${clerkUser.lastName || ""}`.trim()
-          : null,
-        avatarUrl: clerkUser.imageUrl || null,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        fullName: true,
+        avatarUrl: true,
+        plan: true,
+        createdAt: true,
       },
     });
 
-    const displayName = dbUser.fullName || dbUser.name || dbUser.email.split("@")[0];
-    sendWelcomeEmail(dbUser.email, displayName).catch(() => {});
+    if (syncResult.isNewUser && dbUser) {
+      const displayName = dbUser.fullName || dbUser.name || dbUser.email.split("@")[0];
+      sendWelcomeEmail(dbUser.email, displayName).catch(() => {});
+    }
 
     return NextResponse.json({ user: dbUser });
   } catch (err) {

@@ -5,14 +5,20 @@ import Link from "next/link"
 import { ArrowLeft, Eye, EyeOff, LockKeyhole, Mail, UserRound } from "lucide-react"
 import { useAuth, useSignUp } from "@clerk/nextjs"
 import { signupSchema } from "@/lib/validations/auth"
+import { humanizeAuthError } from "@/lib/auth/errors"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { showError, showSuccess } from "@/components/ui/toast"
 
 function extractClerkError(err: unknown): string {
   if (!err || typeof err !== "object") return "Something went wrong. Please try again."
-  const e = err as { errors?: Array<{ longMessage?: string; message?: string }>; message?: string; longMessage?: string }
-  return e.errors?.[0]?.longMessage || e.errors?.[0]?.message || e.longMessage || e.message || "Something went wrong. Please try again."
+  const e = err as { errors?: Array<{ longMessage?: string; message?: string; code?: string }>; message?: string; longMessage?: string }
+  const raw = e.errors?.[0]?.longMessage || e.errors?.[0]?.message || e.longMessage || e.message || ""
+  const code = e.errors?.[0]?.code || ""
+
+  if (!raw && !code) return "Something went wrong. Please try again."
+
+  return humanizeAuthError(raw || code)
 }
 
 type Step = "signup" | "verify"
@@ -29,6 +35,7 @@ export default function SignupPage() {
   const [step, setStep] = useState<Step>("signup")
   const [code, setCode] = useState("")
   const [verifying, setVerifying] = useState(false)
+  const [resending, setResending] = useState(false)
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
@@ -128,8 +135,8 @@ export default function SignupPage() {
     e.preventDefault()
     setClerkError("")
 
-    if (!code.trim()) {
-      setClerkError("Please enter the verification code sent to your email.")
+    if (!code.trim() || code.trim().length < 6) {
+      setClerkError("Please enter the complete 6-digit verification code.")
       return
     }
 
@@ -139,7 +146,11 @@ export default function SignupPage() {
 
       if (error) {
         const msg = extractClerkError(error)
-        setClerkError(msg)
+        if (msg.includes("expired")) {
+          setClerkError("This verification code has expired. Please request a new one.")
+        } else {
+          setClerkError(msg)
+        }
         showError(msg)
         return
       }
@@ -178,6 +189,28 @@ export default function SignupPage() {
     }
   }
 
+  async function handleResendCode() {
+    setClerkError("")
+    setResending(true)
+    try {
+      const { error } = await signUp.verifications.sendEmailCode()
+      if (error) {
+        const msg = extractClerkError(error)
+        setClerkError(msg)
+        showError(msg)
+        return
+      }
+      showSuccess("New code sent! Check your email.")
+      setCode("")
+    } catch (err: unknown) {
+      const msg = extractClerkError(err)
+      setClerkError(msg)
+      showError(msg)
+    } finally {
+      setResending(false)
+    }
+  }
+
   async function handleGoogleLogin() {
     setGoogleLoading(true)
     setClerkError("")
@@ -186,7 +219,7 @@ export default function SignupPage() {
         strategy: "oauth_google",
         redirectUrl: `${window.location.origin}/callback`,
         redirectCallbackUrl: `${window.location.origin}/dashboard`,
-      })
+      } as const)
       if (error) {
         const msg = extractClerkError(error)
         setClerkError(msg)
@@ -216,13 +249,14 @@ export default function SignupPage() {
         <p className="text-sm font-semibold uppercase tracking-[0.1em] text-indigo-300">Verify your email</p>
         <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">Check your inbox</h2>
         <p className="mt-3 text-base leading-7 text-slate-300">
-          We sent a verification code to <span className="font-medium text-white">{form.email}</span>. Enter it below to activate your account.
+          We sent a 6-digit verification code to <span className="font-medium text-white">{form.email}</span>. Enter it below to activate your account.
         </p>
 
         {clerkError && (
-          <div className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {clerkError}
-          </div>
+          <div
+            className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 [&_a]:text-indigo-300 [&_a:hover]:text-indigo-200 [&_a]:font-semibold [&_a]:underline"
+            dangerouslySetInnerHTML={{ __html: clerkError }}
+          />
         )}
 
         <form className="mt-8 space-y-5" onSubmit={handleVerifyCode} noValidate>
@@ -235,36 +269,24 @@ export default function SignupPage() {
               autoComplete="one-time-code"
               placeholder="e.g. 123456"
               value={code}
-              onChange={(e) => { setCode(e.target.value); setClerkError("") }}
+              onChange={(e) => { const v = e.target.value.replace(/\D/g, "").slice(0, 6); setCode(v); setClerkError("") }}
+              maxLength={6}
             />
           </div>
-          <Button type="submit" size="lg" loading={verifying} className="w-full">Verify email</Button>
+          <Button type="submit" size="lg" loading={verifying} className="w-full">
+            {verifying ? "Verifying..." : "Verify email"}
+          </Button>
         </form>
 
         <p className="mt-6 text-center text-sm text-slate-400">
           Did not receive the code?{" "}
           <button
             type="button"
-            onClick={async () => {
-              setClerkError("")
-              try {
-                const { error } = await signUp.verifications.sendEmailCode()
-                if (error) {
-                  const msg = extractClerkError(error)
-                  setClerkError(msg)
-                  showError(msg)
-                  return
-                }
-                showSuccess("Code resent! Check your email.")
-              } catch (err: unknown) {
-                const msg = extractClerkError(err)
-                setClerkError(msg)
-                showError(msg)
-              }
-            }}
-            className="font-semibold text-indigo-300 hover:text-indigo-200"
+            disabled={resending}
+            onClick={handleResendCode}
+            className="font-semibold text-indigo-300 hover:text-indigo-200 disabled:opacity-50"
           >
-            Resend code
+            {resending ? "Resending..." : "Resend code"}
           </button>
         </p>
       </div>
@@ -278,9 +300,10 @@ export default function SignupPage() {
       <p className="mt-3 text-base leading-7 text-slate-300">3 free generations. No credit card required.</p>
 
       {clerkError && (
-        <div className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {clerkError}
-        </div>
+        <div
+          className="mt-6 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 [&_a]:text-indigo-300 [&_a:hover]:text-indigo-200 [&_a]:font-semibold [&_a]:underline"
+          dangerouslySetInnerHTML={{ __html: clerkError }}
+        />
       )}
 
       <form className="mt-8 space-y-5" onSubmit={handleSignup} noValidate>
@@ -293,7 +316,7 @@ export default function SignupPage() {
         <Field label="Password" htmlFor="password">
           <div className="relative">
             <Input id="password" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder="At least 6 characters" value={form.password} onChange={(e) => update("password", e.target.value)} error={errors.password} icon={<LockKeyhole className="h-4 w-4" />} className="pr-12" />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200" aria-label={showPassword ? "Hide" : "Show"}>
+            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200" aria-label={showPassword ? "Hide password" : "Show password"}>
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
             </button>
           </div>

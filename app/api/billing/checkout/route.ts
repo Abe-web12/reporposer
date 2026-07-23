@@ -8,6 +8,7 @@ import { createCheckoutSession, getCustomerId, getPriceId } from "@/lib/stripe/h
 import { sanitizeError, AppError, parseBody } from "@/lib/utils/api-errors";
 import { CouponEngine } from "@/lib/billing/coupons";
 import { rateLimit } from "@/lib/utils/rate-limit";
+import { getBaseUrl } from "@/lib/utils";
 import { z } from "zod";
 
 const LOG = "[BILLING_CHECKOUT]";
@@ -113,8 +114,8 @@ export async function POST(request: Request) {
         customer: customerId,
         mode: "payment",
         line_items: [{ price: addon.stripePriceId, quantity: 1 }],
-        success_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?addon=success`,
-        cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?addon=cancelled`,
+        success_url: `${getBaseUrl()}/billing?addon=success`,
+        cancel_url: `${getBaseUrl()}/billing?addon=cancelled`,
         metadata: { user_id: user.id, addon_id: parsed.data.addonId, type: "addon" },
       });
       log("9", true, `Addon checkout session created: ${session.url}`);
@@ -132,8 +133,8 @@ export async function POST(request: Request) {
           customer: customerId,
           mode: "payment",
           line_items: [{ price: plan.stripePriceId, quantity: 1 }],
-          success_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?lifetime=success`,
-          cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?lifetime=cancelled`,
+          success_url: `${getBaseUrl()}/billing?lifetime=success`,
+          cancel_url: `${getBaseUrl()}/billing?lifetime=cancelled`,
           metadata: { user_id: user.id, lifetime_plan_id: parsed.data.lifetimePlanId, type: "lifetime_deal" },
         });
         log("9", true, `Lifetime checkout session created: ${session.url}`);
@@ -152,8 +153,8 @@ export async function POST(request: Request) {
       customer: customerId,
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/settings?billing=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/upgrade?billing=cancelled`,
+      success_url: `${getBaseUrl()}/settings?billing=success`,
+      cancel_url: `${getBaseUrl()}/upgrade?billing=cancelled`,
       metadata: { user_id: user.id },
       subscription_data: { metadata: { user_id: user.id } },
     };

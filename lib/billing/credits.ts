@@ -185,19 +185,12 @@ export class CreditManager {
     options?: { reference?: string; description?: string; expiresAt?: Date; metadata?: Record<string, unknown> },
   ): Promise<{ balance: number }> {
     return prisma.$transaction(async (tx) => {
-      const cb = await tx.creditBalances.findUnique({ where: { userId } });
-      let newBalance = amount;
-      if (cb) {
-        newBalance = cb.balance + amount;
-        await tx.creditBalances.update({
-          where: { userId },
-          data: { balance: { increment: amount }, updatedAt: new Date() },
-        });
-      } else {
-        await tx.creditBalances.create({
-          data: { userId, balance: amount, reserved: 0 },
-        });
-      }
+      const cb = await tx.creditBalances.upsert({
+        where: { userId },
+        create: { userId, balance: amount, reserved: 0 },
+        update: { balance: { increment: amount }, updatedAt: new Date() },
+      });
+      const newBalance = cb.balance;
 
       await tx.creditTransactions.create({
         data: {

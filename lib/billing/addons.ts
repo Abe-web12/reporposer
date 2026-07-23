@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { CreditManager } from "./credits";
 import { getStripe } from "@/lib/stripe/config";
+import { getBaseUrl } from "@/lib/utils";
 
 export class AddonManager {
   static async purchaseCreditsAddon(
@@ -30,8 +31,8 @@ export class AddonManager {
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{ price: addon.stripePriceId, quantity: 1 }],
-        success_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?addon=success`,
-        cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/billing?addon=cancelled`,
+        success_url: `${getBaseUrl()}/billing?addon=success`,
+        cancel_url: `${getBaseUrl()}/billing?addon=cancelled`,
         metadata: { user_id: userId, addon_id: addonId, type: "addon" },
       });
       return { sessionUrl: session.url ?? undefined };

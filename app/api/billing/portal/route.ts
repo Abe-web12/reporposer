@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { createPortalSession, createCheckoutSession, getCustomerId, getPriceId } from "@/lib/stripe/helpers";
 import { getStripe } from "@/lib/stripe/config";
 import { sanitizeError, AppError } from "@/lib/utils/api-errors";
+import { getBaseUrl } from "@/lib/utils";
 import { checkRequired, BILLING_ENV_CHECK } from "@/lib/env-check";
 
 const LOG = "[BILLING_PORTAL]";
@@ -111,7 +112,7 @@ export async function POST() {
     if (!priceId) {
       log("8", false, "No price ID configured — redirecting to pricing page");
       return NextResponse.json({
-        url: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/pricing`,
+        url: `${getBaseUrl()}/pricing`,
       });
     }
     log("8", true, `Price ID loaded: ${priceId}`);
