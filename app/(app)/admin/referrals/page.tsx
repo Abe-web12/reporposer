@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/billing/stat-card";
 import { ReferralLeaderboard } from "@/components/referrals/referral-leaderboard";
-import { useReferralLeaderboard } from "@/hooks/use-referrals";
+import { useReferralLeaderboard, type LeaderboardEntry } from "@/hooks/use-referrals";
 
 interface AdminReferralData {
   totalReferrals: number;
@@ -19,9 +19,24 @@ interface AdminReferralData {
   conversionRate: number;
 }
 
+interface FraudFlag {
+  id: string;
+  inviterId: string;
+  inviteeEmail: string | null;
+  createdAt: string;
+}
+
+interface ReferralEntry {
+  id?: string;
+  inviteeEmail?: string | null;
+  createdAt?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
 export default function AdminReferralsPage() {
   const [data, setData] = useState<AdminReferralData | null>(null);
-  const [fraudFlags, setFraudFlags] = useState<Array<{ id: string; inviterId: string; inviteeEmail: string | null; createdAt: string }>>([]);
+  const [fraudFlags, setFraudFlags] = useState<FraudFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const { leaderboard, loading: lbLoading } = useReferralLeaderboard();
 
@@ -29,10 +44,12 @@ export default function AdminReferralsPage() {
     setLoading(true);
     try {
       const [analyticsRes, flagsRes] = await Promise.all([
-        window.fetch("/api/referrals"),
-        window.fetch("/api/referrals?limit=100"),
+        fetch("/api/referrals"),
+        fetch("/api/referrals?limit=100"),
       ]);
-      const analyticsJson = await analyticsRes.json();
+      const analyticsJson: { data?: { stats?: { totalInvites: number; convertedCount: number; totalRevenue: number; totalCredits: number; conversionRate: number } } } = await analyticsRes.json();
+      const flagsJson: { data?: { events?: ReferralEntry[] } } = await flagsRes.json();
+
       if (analyticsJson.data?.stats) {
         setData({
           totalReferrals: analyticsJson.data.stats.totalInvites,
@@ -43,7 +60,20 @@ export default function AdminReferralsPage() {
           conversionRate: analyticsJson.data.stats.conversionRate,
         });
       }
-    } catch {} finally {
+
+      if (flagsJson.data?.events) {
+        const flagged = flagsJson.data.events
+          .filter((e: ReferralEntry) => e.status === "FLAGGED" || e.status === "FRAUD")
+          .map((e: ReferralEntry) => ({
+            id: e.id ?? crypto.randomUUID(),
+            inviterId: (e.inviterId as string) ?? "",
+            inviteeEmail: (e.inviteeEmail as string | null) ?? null,
+            createdAt: (e.createdAt as string) ?? new Date().toISOString(),
+          }));
+        setFraudFlags(flagged);
+      }
+    } catch {
+    } finally {
       setLoading(false);
     }
   }, [leaderboard.length]);
@@ -81,7 +111,7 @@ export default function AdminReferralsPage() {
           <CardContent>
             {loading ? (
               <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+                {Array.from({ length: 5 }).map((_: unknown, i: number) => <Skeleton key={i} className="h-8 w-full" />)}
               </div>
             ) : (
               <div className="space-y-4">
@@ -115,7 +145,11 @@ export default function AdminReferralsPage() {
             <CardDescription>Flagged referrals requiring review</CardDescription>
           </CardHeader>
           <CardContent>
-            {fraudFlags.length === 0 ? (
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_: unknown, i: number) => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : fraudFlags.length === 0 ? (
               <div className="flex flex-col items-center py-8 text-center">
                 <Shield className="h-8 w-8 text-green-500 mb-2" />
                 <p className="text-sm font-medium text-text-primary">No flags detected</p>
@@ -123,7 +157,7 @@ export default function AdminReferralsPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {fraudFlags.map((flag) => (
+                {fraudFlags.map((flag: FraudFlag) => (
                   <div key={flag.id} className="flex items-center justify-between py-2 border-b last:border-0">
                     <div>
                       <p className="text-sm font-medium">{flag.inviteeEmail || "Unknown"}</p>
